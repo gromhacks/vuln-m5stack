@@ -1,0 +1,330 @@
+================================================================================
+  L20 - WiFi Deauthentication Attack : Setup & Attack Diagram
+================================================================================
+
+  No direct wiring to target -- WiFi deauth is a wireless attack.
+  However, a monitor-mode capable WiFi adapter is REQUIRED.
+  This diagram shows the hardware setup and attack flow.
+
+
+  HARDWARE SETUP
+  ==============
+
+                                 WiFi 2.4 GHz
+                           (802.11b/g/n, Channel 1-13)
+
+   +-----------------------------+         +-----------------------------+
+   |      ATTACKER LAPTOP        |  ~~~~>  |     M5STACK CORES3          |
+   |                             |         |     (WiFi Access Point)     |
+   |  +----------+              |         |                             |
+   |  | Monitor- |  USB          |         |  SSID: CoreS3-CAM-XXXXXX   |
+   |  | Mode     |======]       |         |  BSSID: XX:XX:XX:XX:XX:XX  |
+   |  | Adapter  |              |         |  Channel: auto (1-11)      |
+   |  +----------+              |         |  Auth: Open (no encryption)|
+   |                             |         |  IP: 192.168.4.1           |
+   |  OS: Linux (required)      |         +-----------------------------+
+   |  aircrack-ng suite         |
+   +-----------------------------+                    |
+                                              WiFi    |  Connected
+                                           Association|  Clients
+                                                      |
+                                         +------------+------------+
+                                         |                         |
+                                    +---------+              +---------+
+                                    | Client  |              | Client  |
+                                    | Phone / |              | Laptop  |
+                                    | Tablet  |              |         |
+                                    +---------+              +---------+
+                                    192.168.4.x              192.168.4.x
+
+
+  ATTACK TOPOLOGY (bird's eye view)
+  =================================
+
+                +----------+
+                | ATTACKER |
+                | (mon0)   |
+                +----+-----+
+                     |
+                     |  Spoofed deauth frames
+                     |  (forged source = AP BSSID)
+                     |
+              +------+------+
+              |             |
+              v             v
+         +---------+   +---------+
+         | CLIENT  |   | CORES3  |
+         |         |   |  (AP)   |
+         +---------+   +---------+
+
+         Deauth frames are management frames.
+         They are NOT encrypted (even on WPA2).
+         No authentication needed to send them.
+
+
+  RECOMMENDED WIFI ADAPTERS
+  =========================
+
+   +-------------------+-----------+---------+-----------+---------+
+   |  Adapter          | Chipset   | Monitor | Injection | Notes   |
+   +-------------------+-----------+---------+-----------+---------+
+   |  ALFA AWUS036ACH  | RTL8812AU | Yes     | Yes       | Best    |
+   |  ALFA AWUS036NHA  | AR9271    | Yes     | Yes       | Classic |
+   |  TP-Link          | AR9271    | Yes     | Yes       | Budget  |
+   |   TL-WN722N v1    |           |         |           | (v1     |
+   |                   |           |         |           |  ONLY!) |
+   |  Panda PAU09      | RT5572    | Yes     | Yes       | Dual-   |
+   |                   |           |         |           |  band   |
+   +-------------------+-----------+---------+-----------+---------+
+
+   WARNING: TP-Link TL-WN722N version 2 and 3 use a DIFFERENT
+   chipset (RTL8188EUS) that does NOT support monitor mode
+   out of the box. Only version 1 (AR9271) works reliably.
+
+   Verify chipset before purchase:
+     $ lsusb
+     $ iw list | grep -A5 "Supported interface modes"
+       --> must show "monitor"
+
+
+  SOFTWARE REQUIREMENTS
+  =====================
+
+   +-------------------+---------------------------------------+
+   |  Package          |  Install Command                      |
+   +-------------------+---------------------------------------+
+   |  aircrack-ng      |  sudo apt install aircrack-ng         |
+   |    airmon-ng      |    (included)                         |
+   |    airodump-ng    |    (included)                         |
+   |    aireplay-ng    |    (included)                         |
+   |  iw               |  sudo apt install iw                  |
+   |  wireless-tools   |  sudo apt install wireless-tools      |
+   |  macchanger       |  sudo apt install macchanger          |
+   +-------------------+---------------------------------------+
+
+   OS: Linux required (Kali Linux recommended, Ubuntu/Debian works)
+   Kernel: 5.x+ with appropriate wireless drivers
+
+
+  ADAPTER SETUP
+  =============
+
+   1. Plug in USB WiFi adapter
+
+   2. Verify detection:
+      $ lsusb
+      $ iwconfig
+      $ iw dev
+        --> note interface name (e.g., wlan1)
+
+   3. Kill interfering processes:
+      $ sudo airmon-ng check kill
+
+   4. Enable monitor mode:
+      $ sudo airmon-ng start wlan1
+        --> creates wlan1mon (or mon0)
+
+   5. Verify monitor mode:
+      $ iwconfig wlan1mon
+        --> Mode: Monitor
+
+
+  ATTACK FLOW DIAGRAM
+  ===================
+
+   ATTACKER (wlan1mon)                              CORES3 AP
+   -------------------                              ---------
+
+   1. SCAN FOR TARGET AP
+   $ sudo airodump-ng wlan1mon
+        |
+        |   <~~~ Beacon Frames (all APs) ~~~
+        |        BSSID, SSID, Channel, Encryption
+        v
+   [ Identify CoreS3 AP:                            [ Broadcasting ]
+     BSSID = XX:XX:XX:XX:XX:XX                      [ beacons with ]
+     SSID  = CoreS3-CAM-XXXXXX                      [ SSID every   ]
+     CH    = N                                       [ ~100ms       ]
+     ENC   = OPN  ]
+                                                          |
+   2. LOCK ON TARGET + IDENTIFY CLIENTS                   |
+   $ sudo airodump-ng -c N --bssid XX:...:XX wlan1mon     |
+        |                                                  |
+        |   <~~~ Data Frames ~~~                           |
+        |        Shows connected stations (clients)        |
+        v                                                  |
+   [ Record:                                               |
+     - AP BSSID                                            |
+     - Client MAC(s): YY:YY:YY:YY:YY:YY                   |
+     - Channel ]                                           |
+                                                           |
+   3. SEND DEAUTHENTICATION FRAMES                         |
+                                                           |
+   Option A: Deauth ALL clients                            |
+   $ sudo aireplay-ng -0 10 -a XX:...:XX wlan1mon         |
+        |                                                  |
+        |   ---- Deauth Frame (reason 7) ---->    CLIENT   |
+        |        src=AP BSSID, dst=broadcast       |       |
+        |                                          v       |
+        |                              [ Client receives   |
+        |                                deauth, drops     |
+        |                                association ]     |
+        |                                                  |
+   Option B: Deauth SPECIFIC client                        |
+   $ sudo aireplay-ng -0 10 -a XX:...:XX                  |
+                            -c YY:...:YY wlan1mon          |
+        |                                                  |
+        |   ---- Deauth Frame -----> [ Target client ]     |
+        |        src=AP BSSID                              |
+        |        dst=client MAC                            |
+        v                                                  v
+   [ Repeat as needed ]                    [ Client disconnected ]
+                                           [ Must re-associate   ]
+                                           [ to regain access    ]
+
+   4. OBSERVE RESULTS
+   - Client(s) lose WiFi connectivity
+   - airodump-ng shows client disappearing from station list
+   - Client may auto-reconnect (send continuous deauths to persist)
+   - Continuous deauth: use -0 0 (zero = infinite loop)
+
+
+  DEAUTH FRAME STRUCTURE
+  ======================
+
+   +------------------+------------------+------------------+--------+
+   | Frame Control    | Duration         | Destination      | Source |
+   | Type=0 Subtype=C |                  | (client MAC or   | (AP    |
+   | (Management/     |                  |  broadcast       |  BSSID)|
+   |  Deauth)         |                  |  FF:FF:FF:FF:    |        |
+   |                  |                  |  FF:FF)          |        |
+   +------------------+------------------+------------------+--------+
+   | BSSID            | Seq Control      | Reason Code      | FCS    |
+   | (AP MAC)         |                  | (e.g., 0x0007 =  |        |
+   |                  |                  |  Class 3 frame   |        |
+   |                  |                  |  from non-assoc  |        |
+   |                  |                  |  station)        |        |
+   +------------------+------------------+------------------+--------+
+
+   These frames are UNENCRYPTED management frames.
+   802.11w (PMF) protects against this -- but most IoT
+   devices (including ESP32) do not implement PMF.
+
+
+  QUICK REFERENCE
+  ===============
+
+   # Full attack sequence (copy-paste ready)
+   sudo airmon-ng check kill
+   sudo airmon-ng start wlan1
+   sudo airodump-ng wlan1mon
+     # note BSSID and channel of CoreS3 AP
+   sudo airodump-ng -c <CH> --bssid <BSSID> wlan1mon
+     # note client station MACs
+   sudo aireplay-ng -0 10 -a <BSSID> -c <CLIENT> wlan1mon
+
+   # Restore adapter to managed mode when done:
+   sudo airmon-ng stop wlan1mon
+   sudo systemctl start NetworkManager
+
+   Or use the provided Python script:
+   $ sudo python3 deauth_attack.py --interface wlan1mon --bssid <BSSID>
+
+
+  LEGAL NOTICE
+  ============
+
+   Deauthentication attacks are ILLEGAL on networks you do not own
+   or have explicit authorization to test. This lab is designed for
+   use ONLY against the CoreS3 lab device on an isolated network.
+
+
+================================================================
+OPTION: ESP32-S3 DEV BOARD (BUDGET ALTERNATIVE ~$8-15)
+================================================================
+
+  No physical wiring to target needed -- WiFi is wireless.
+  Replaces the expensive monitor-mode WiFi adapter ($30-60)
+  with a cheap ESP32-S3 dev board that can send raw 802.11 frames.
+
+  HARDWARE
+  --------
+
+   +-------------------------+           +-----------------------------+
+   |   ESP32-S3 DEV BOARD    |   WiFi    |     M5STACK CORES3          |
+   |                         | ~~~~~~~~> |     (WiFi Access Point)     |
+   | wifi_deauth_esp32.ino   |  2.4 GHz  |                             |
+   | (raw 802.11 TX)         |           |  SSID: CoreS3-CAM-XXXXXX   |
+   |                         |           |  PMF: disabled              |
+   |   Power: USB            |           |  Power: USB                 |
+   +-------------------------+           +-----------------------------+
+
+   Range: same room, 1-30 meters
+   No line-of-sight required
+
+
+  SETUP
+  -----
+
+   1. Flash wifi_deauth_esp32.ino to an ESP32-S3 dev board:
+
+      Arduino IDE:
+        - Board: "ESP32S3 Dev Module"
+        - Partition Scheme: "Default 4MB with spiffs"
+        - Upload Speed: 921600
+        - Select correct COM port
+        - Click Upload
+
+      PlatformIO (standalone project):
+        [env:esp32s3]
+        platform = espressif32
+        board = esp32-s3-devkitc-1
+        framework = arduino
+        monitor_speed = 115200
+
+   2. Open serial monitor at 115200 baud.
+
+   3. Type "scan" to find the CoreS3 access point.
+
+   4. Type "target AA:BB:CC:DD:EE:FF 1" with the BSSID and channel.
+
+   5. Type "deauth 20" to send 20 broadcast deauth frames.
+
+   6. Type "deauth-client XX:XX:XX:XX:XX:XX 10" for targeted deauth.
+
+
+  ADVANTAGES OVER MONITOR-MODE ADAPTER
+  -------------------------------------
+
+   - Much cheaper: $8-15 vs $30-60 for Alfa/Panda adapters
+   - No driver issues (no need for special kernel modules)
+   - No Linux required (works from any OS with Arduino IDE)
+   - Self-contained: no laptop needed after flashing
+   - Portable: pocket-sized, powered by USB battery bank
+   - ESP32 esp_wifi_80211_tx() sends raw frames natively
+
+  LIMITATIONS VS DEDICATED ADAPTER
+  ---------------------------------
+
+   - Lower TX power than Alfa adapters (may need closer range)
+   - No simultaneous monitoring + injection
+   - Cannot run airodump-ng or Wireshark for packet capture
+   - Limited channel hopping (must set channel manually)
+   - Cannot capture WPA handshakes for offline cracking
+   - For full attack chain (capture + inject), use a proper
+     monitor-mode adapter; the ESP32 is best for simple deauth
+
+
+  COMPATIBLE BOARDS
+  -----------------
+
+   Any ESP32-S3 board with USB serial works:
+   - ESP32-S3-DevKitC-1 (Espressif official, ~$10)
+   - Seeed XIAO ESP32-S3 (~$8)
+   - Adafruit QT Py ESP32-S3 (~$12)
+   - Generic ESP32-S3 boards from AliExpress (~$5-8)
+
+   Note: Original ESP32 boards also work (same esp_wifi_80211_tx API).
+   ESP32-C3 boards may NOT work (different WiFi driver, limited raw TX).
+
+================================================================================

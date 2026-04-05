@@ -1,0 +1,77 @@
+# =============================================================
+# Build artifacts
+# =============================================================
+build/
+sdkconfig
+sdkconfig.old
+.pio/
+
+# =============================================================
+# Python
+# =============================================================
+*.pyc
+__pycache__/
+.venv/
+venv/
+env/
+.pytest_cache/
+
+# =============================================================
+# IDE / Editor
+# =============================================================
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# =============================================================
+# OS
+# =============================================================
+.DS_Store
+Thumbs.db
+
+# =============================================================
+# Temporary / generated files
+# =============================================================
+*.log
+*.tmp
+*.bak
+test_results/
+coverage/
+artifacts/
+dependencies.lock
+managed_components/
+
+# =============================================================
+# Firmware binaries in project root (build outputs go in .pio/)
+# =============================================================
+/*.bin
+/*.elf
+
+# =============================================================
+# Sensitive / private files -- DO NOT COMMIT
+# =============================================================
+
+# AI assistant context (contains internal architecture details)
+CLAUDE.md
+
+# Claude Code session data
+.claude/
+
+# Environment files with credentials
+.env
+.env.*
+
+# SSH / TLS keys
+*.pem
+*.key
+*.crt
+*.p12
+id_rsa*
+
+# WiFi / network credentials
+wpa_supplicant.conf
+
+# OpenOCD build artifacts (if building locally)
+openocd-esp32/

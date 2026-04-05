@@ -1,0 +1,235 @@
+================================================================================
+  L20 - BLE GATT Buffer Overflow : Setup & Attack Diagram
+================================================================================
+
+  No physical wiring required -- BLE is a wireless protocol.
+  This diagram shows the logical setup and attack flow.
+
+
+  HARDWARE SETUP
+  ==============
+
+                        ~10m max range (open air)
+                        ~3-5m recommended for reliability
+                  <--------------------------------------->
+
+   +-----------------------------+         +-----------------------------+
+   |      ATTACKER LAPTOP        |  BLE    |     M5STACK CORES3          |
+   |                             | ~~~~~~> |                             |
+   |  +-------+                  |  2.4GHz |  +-------------------+      |
+   |  | BLE   |  USB             |         |  | ESP32-S3          |      |
+   |  | Dongle|======]           |         |  | (integrated BLE)  |      |
+   |  +-------+                  |         |  +-------------------+      |
+   |                             |         |                             |
+   |  OS: Linux (recommended)    |         |  Role: BLE GATT Server     |
+   |  Kernel: 5.x+              |         |  Advertising: yes           |
+   |  BlueZ: 5.50+              |         |  Services: custom           |
+   +-----------------------------+         +-----------------------------+
+
+
+  BLE ADAPTER OPTIONS
+  ===================
+
+   Option A: USB BLE Dongle (recommended for VM/desktop)
+   +----------+
+   | CSR 4.0  |---USB--->  Laptop
+   | or       |            - Cheap, widely available
+   | nRF52840 |            - nRF52840 dongle supports BLE 5.0 + sniffing
+   +----------+
+
+   Option B: Built-in Bluetooth (most modern laptops)
+   - Verify BLE support:  hciconfig hci0
+   - Must support BLE 4.0+
+
+
+  SOFTWARE REQUIREMENTS
+  =====================
+
+   +-------------------+---------------------------------------+
+   |  Package          |  Install Command                      |
+   +-------------------+---------------------------------------+
+   |  bluez            |  sudo apt install bluez               |
+   |  bluez-tools      |  sudo apt install bluez-tools         |
+   |  gatttool         |  (included with bluez)                |
+   |  hcitool          |  (included with bluez)                |
+   |  python3-bluepy   |  pip3 install bluepy                  |
+   |  python3-bleak    |  pip3 install bleak  (cross-platform) |
+   +-------------------+---------------------------------------+
+
+   Verify BLE stack is running:
+     $ sudo systemctl status bluetooth
+     $ hciconfig hci0 up
+     $ hcitool dev
+
+
+  ATTACK FLOW DIAGRAM
+  ===================
+
+   ATTACKER                                         CORES3 (GATT SERVER)
+   --------                                         --------------------
+
+   1. SCAN
+   $ hcitool lescan
+   $ sudo bluetoothctl                              <-- Device advertising
+     > scan on                                          as BLE peripheral
+        |                                                    |
+        |   <~~~ BLE Advertisement Packets ~~~               |
+        |        (device name, services)                     |
+        v                                                    |
+   [ Identify target MAC address ]                           |
+                                                             |
+   2. CONNECT                                                |
+   $ gatttool -b <MAC> -I                                    |
+     > connect                                               |
+        |                                                    |
+        |   ----  Connection Request  ---->                  |
+        |   <---  Connection Response ----                   |
+        v                                                    v
+   [ BLE link established ]                     [ Accepts connection ]
+                                                             |
+   3. ENUMERATE SERVICES                                     |
+     > primary                                               |
+     > characteristics                                       |
+        |                                                    |
+        |   ----  Read By Group Type ---->                   |
+        |   <---  Service UUIDs ----------                   |
+        |   ----  Read By Type ---------->                   |
+        |   <---  Characteristic UUIDs ---                   |
+        v                                                    |
+   [ Map all services and                                    |
+     characteristics with                                    |
+     their handles and                                       |
+     permissions (R/W/N) ]                                   |
+                                                             |
+   4. IDENTIFY WRITABLE CHARACTERISTIC                       |
+   [ Look for characteristics with                           |
+     WRITE or WRITE_NO_RESPONSE                              |
+     permission -- especially ones                           |
+     accepting arbitrary-length data ]                       |
+                                                             |
+   5. WRITE OVERFLOW PAYLOAD                                 |
+     > char-write-req <handle> <payload>                     |
+        |                                                    |
+        |   ----  Write Request --------->                   |
+        |        (oversized payload)                         |
+        |                                      +-------------+--------+
+        |                                      | GATT write handler   |
+        |                                      | copies data to fixed |
+        |                                      | stack buffer WITHOUT  |
+        |                                      | length check          |
+        |                                      +-----------------------+
+        |                                                    |
+        |                                                    v
+        |                                      [ Stack corruption /    ]
+        |                                      [ potential code exec   ]
+        |                                      [ or device crash       ]
+        v
+   [ Observe result: crash,
+     unexpected behavior, or
+     control flow hijack ]
+
+
+  DISTANCE & ENVIRONMENT NOTES
+  ============================
+
+   - BLE theoretical range: ~100m (BLE 5.0), ~30m (BLE 4.x)
+   - Practical indoor range: 5-10m with walls/obstacles
+   - ESP32-S3 BLE TX power: up to +9 dBm
+   - Recommended attack distance: 1-3m for reliability
+   - External BLE antenna improves range significantly
+   - BLE operates on 2.4 GHz -- subject to WiFi interference
+
+
+  QUICK START
+  ===========
+
+   $ sudo hciconfig hci0 up
+   $ sudo hcitool lescan
+     [identify CoreS3 MAC, e.g., AA:BB:CC:DD:EE:FF]
+
+   $ gatttool -b AA:BB:CC:DD:EE:FF -I
+     > connect
+     > primary
+     > characteristics
+     > char-write-req 0x00XX <long_hex_payload>
+
+   Or use the provided Python script:
+   $ python3 ble_overflow.py --target AA:BB:CC:DD:EE:FF
+
+
+================================================================
+OPTION: ESP32-S3 DEV BOARD (ACTIVE BLE ATTACK ~$8-15)
+================================================================
+
+  No physical wiring needed -- BLE is a wireless protocol.
+
+  HARDWARE
+  --------
+
+   +-------------------------+           +-----------------------------+
+   |   ESP32-S3 DEV BOARD    |   BLE     |     M5STACK CORES3          |
+   |                         | ~~~~~~~~> |                             |
+   |   ble_gatt_exploit.ino  |  2.4 GHz  |  BLE GATT Server           |
+   |   (BLE GATT client)     |           |  Advertising: CoreS3-CAM-X |
+   |                         |           |                             |
+   |   Power: USB            |           |  Power: USB                 |
+   +-------------------------+           +-----------------------------+
+
+   Range: 1-10 meters from CoreS3 (no line-of-sight required)
+
+
+  SETUP
+  -----
+
+   1. Flash ble_gatt_exploit.ino to an ESP32-S3 dev board:
+
+      Arduino IDE:
+        - Board: "ESP32S3 Dev Module"
+        - Partition Scheme: "Default 4MB with spiffs"
+        - Upload Speed: 921600
+        - Select correct COM port
+        - Click Upload
+
+      PlatformIO (standalone project):
+        [env:esp32s3]
+        platform = espressif32
+        board = esp32-s3-devkitc-1
+        framework = arduino
+        monitor_speed = 115200
+
+   2. Open serial monitor at 115200 baud.
+
+   3. Type "scan" to find the CoreS3 BLE device.
+
+   4. Type "connect <MAC>" with the MAC address from the scan.
+
+   5. Type "enum" to enumerate GATT services and find the
+      vulnerable config characteristic.
+
+   6. Type "exploit <hex_address>" with the address of
+      ble_config_unlock from nm output.
+
+
+  ADVANTAGES OVER LAPTOP + GATTTOOL
+  ----------------------------------
+
+   - Self-contained attack platform (no laptop needed after flash)
+   - Cheap: $8-15 for generic ESP32-S3 dev board
+   - Portable: fits in a pocket, powered by USB battery bank
+   - Integrated BLE 5.0 radio, no dongle needed
+   - Same ESP32-S3 chip as the target (matched radio capabilities)
+
+
+  COMPATIBLE BOARDS
+  -----------------
+
+   Any ESP32-S3 board with USB serial works:
+   - ESP32-S3-DevKitC-1 (Espressif official, ~$10)
+   - Seeed XIAO ESP32-S3 (~$8)
+   - Adafruit QT Py ESP32-S3 (~$12)
+   - Generic ESP32-S3 boards from AliExpress (~$5-8)
+
+   Note: ESP32 (non-S3) boards also work since this only uses BLE 4.2
+   features. ESP32-S3 is recommended for BLE 5.0 extended range.
+
+================================================================================

@@ -1,0 +1,280 @@
+==============================================================================
+  L02 WIRING DIAGRAM -- I2C Bus Sniffing
+==============================================================================
+
+  Capture I2C secrets written to an external EEPROM on Port.A (GPIO1/GPIO2).
+  The firmware writes the admin PIN and WiFi password to EEPROM address 0x50
+  at boot. Port.A is a dedicated external I2C bus with no other traffic,
+  so the capture is clean and easy to decode.
+
+==============================================================================
+  CoreS3 Expansion Header Pinout (bottom edge, viewed from front)
+==============================================================================
+
+       Front of device (screen facing you)
+    _____________________________________________
+   |                                             |
+   |              M5Stack CoreS3                 |
+   |                                             |
+   |   [Port.A]     [Port.B]     [Port.C]       |
+   |   (red)        (black)      (blue)         |
+   |_____________________________________________|
+   |                                             |
+   | Pin:  1   2   3   4   5  ...  13  14  15   |
+   |      GND  .  GND  .  GND     RX  TX  5V   |
+   |                              G44 G43       |
+   |_____________________________________________|
+
+  Port.A carries the EEPROM secret transaction:
+    - GPIO1 = SCL  (Port.A pin 0) -- I2C clock
+    - GPIO2 = SDA  (Port.A pin 1) -- I2C data (SECRETS!)
+
+  The internal I2C bus (GPIO11/GPIO12) carries PMIC, RTC, and
+  amplifier traffic -- this is NOT the target for this lab.
+
+
+==============================================================================
+  I2C Bus Architecture -- Two Separate Buses
+==============================================================================
+
+  Internal I2C Bus (GPIO11/12) -- NOT the target:
+       +----+----+----+----+
+       |  PMIC   |  RTC    |
+       | AXP2101 | BM8563  | ... constant background traffic
+       | (0x34)  | (0x51)  |
+       +---------+---------+
+
+  Port.A I2C Bus (GPIO1/GPIO2) -- TARGET:
+       +----+----+
+       | External |
+       | EEPROM   |  <-- firmware writes secrets here at boot
+       | (0x50)   |
+       +----------+
+
+  The firmware writes "ADMINPIN=XXXXXX WIFIPASS=YYYYYY" to EEPROM
+  address 0x50 at every boot. Since no real devices share Port.A,
+  the logic analyzer sees only this one clean transaction.
+
+
+==============================================================================
+  WIRING: Logic Analyzer to Port.A
+==============================================================================
+
+         Logic Analyzer                CoreS3
+        +----------------+           +-------------------------+
+        |                |           |                         |
+        |  CH0  o--------+------<---+ GPIO1 (Port.A SCL)      |
+        |                |           |                         |
+        |  CH1  o--------+------<---+ GPIO2 (Port.A SDA)      |
+        |                |           |                         |
+        |  GND  o--------+----------+ GND (Pin 1 on header)   |
+        |                |           |                         |
+        +---[USB]--------+           +-------------------------+
+             |
+        To host PC
+
+
+  Connection Table:
+  +------------------+-------+-------------------------------+
+  | Logic Analyzer   | Wire  | CoreS3                        |
+  +------------------+-------+-------------------------------+
+  | CH0              | <---  | GPIO1 (SCL) Port.A pin 0      |
+  | CH1              | <---  | GPIO2 (SDA) Port.A pin 1      |
+  | GND              | ----  | Pin 1 (GND) on exp. header    |
+  +------------------+-------+-------------------------------+
+
+  Notes:
+    - This is a passive tap. The logic analyzer only reads signals.
+    - Connect GND first, then signal wires.
+    - Do NOT drive SCL or SDA from the logic analyzer.
+
+
+==============================================================================
+  PulseView / Saleae Logic -- Channel and Decoder Setup
+==============================================================================
+
+  Channel Assignment:
+  +----------+--------+-------------------------------------------+
+  | Channel  | Signal | Description                               |
+  +----------+--------+-------------------------------------------+
+  | CH0      | SCL    | I2C clock line (GPIO1, Port.A)            |
+  | CH1      | SDA    | I2C data line (GPIO2, Port.A)             |
+  +----------+--------+-------------------------------------------+
+
+  PulseView I2C Protocol Decoder Setup:
+  +-------------------+---------------------------+
+  | Setting           | Value                     |
+  +-------------------+---------------------------+
+  | Protocol decoder  | I2C                       |
+  | SCL channel       | CH0                       |
+  | SDA channel       | CH1                       |
+  | Address format    | Shifted (7-bit)           |
+  +-------------------+---------------------------+
+
+  Saleae Logic 2 Setup:
+  +-------------------+---------------------------+
+  | Setting           | Value                     |
+  +-------------------+---------------------------+
+  | Analyzer          | I2C                       |
+  | SCL               | Channel 0                 |
+  | SDA               | Channel 1                 |
+  +-------------------+---------------------------+
+
+  Recommended sample rate: 2 MHz or higher.
+  The I2C EEPROM write runs at ~100 kHz (bit-banged).
+  A 2 MHz sample rate provides 20x oversampling.
+
+
+==============================================================================
+  TRIGGERING THE SECRET WRITE
+==============================================================================
+
+  The EEPROM secret write happens automatically at boot. You can also
+  re-trigger it without rebooting via the serial console:
+
+    cores3-cam> bus-diag
+
+  This re-emits the exact same I2C WRITE transaction on Port.A.
+  Useful for repeated captures without power-cycling.
+
+
+==============================================================================
+  VOLTAGE AND SAFETY NOTES
+==============================================================================
+
+  - I2C bus operates at 3.3V logic levels.
+  - Port.A has 4.7kohm pull-ups to 3.3V on-board.
+  - The logic analyzer input impedance should be high (>1 MOhm)
+    to avoid loading the bus. Most logic analyzers meet this.
+  - Do NOT connect 5V logic analyzers directly. Use a level
+    shifter or a 3.3V-compatible analyzer.
+  - Always connect GND between devices before signal wires.
+  - I2C is an open-drain bus. Both SCL and SDA idle HIGH (3.3V).
+
+
+================================================================
+OPTION: RASPBERRY PI PICO (BUDGET ALTERNATIVE ~$4)
+================================================================
+
+  Use a Raspberry Pi Pico running MicroPython as a passive I2C
+  bus sniffer. The Pico monitors SDA and SCL using fast pin
+  polling, detects START/STOP conditions, captures bytes with
+  ACK/NACK status, and streams decoded transactions over USB
+  serial to the host PC.
+
+  This replaces the logic analyzer used in the main wiring above.
+
+       Raspberry Pi Pico                CoreS3
+      +------------------+            +-------------------------+
+      |                  |            |                         |
+      |  GP14 (input)    +-----<------+ GPIO2 (Port.A SDA)     |
+      |                  |            |                         |
+      |  GP15 (input)    +-----<------+ GPIO1 (Port.A SCL)     |
+      |                  |            |                         |
+      |  GND             +------------+ GND (Pin 1 on header)  |
+      |                  |            |                         |
+      +---[USB]----------+            +-------------------------+
+           |
+      To host PC
+
+
+  Connection Table:
+  +-------------------+-------+-------------------------------+
+  | Raspberry Pi Pico | Wire  | CoreS3                        |
+  +-------------------+-------+-------------------------------+
+  | GP14 (input)      | <---  | GPIO2 (SDA) Port.A pin 1      |
+  | GP15 (input)      | <---  | GPIO1 (SCL) Port.A pin 0      |
+  | GND               | ----  | Pin 1 (GND) on exp. header    |
+  +-------------------+-------+-------------------------------+
+
+  IMPORTANT: The Pico pins are configured as high-impedance inputs
+  with NO pull-up resistors. The CoreS3 already has pull-ups on the
+  I2C bus. Do NOT enable pull-ups on the Pico -- this is a passive
+  tap only.
+
+  Pico GPIO is 3.3V -- directly compatible with ESP32-S3 I2C levels.
+  No level shifter needed.
+
+  Software setup:
+    1. Install MicroPython on the Pico (hold BOOTSEL, drag .uf2 file)
+    2. Upload the sniffer firmware:
+       ./pico_i2c_sniffer.py --upload --pico-port /dev/ttyACM1
+    3. Capture and decode I2C traffic:
+       ./pico_i2c_sniffer.py --receive --pico-port /dev/ttyACM1 --decode
+    4. Or show firmware for manual copy:
+       ./pico_i2c_sniffer.py --show-firmware
+
+  Output format from the Pico:
+    S              -- START condition
+    P              -- STOP condition
+    W:0x50:ACK     -- Write to address 0x50 (acknowledged)
+    D:0x41:ACK     -- Data byte 0x41 ('A') (acknowledged)
+
+  Limitations vs. a logic analyzer:
+    - No waveform visualization (use the --decode flag for text output)
+    - May miss fast I2C traffic (>100 kHz) due to polling rate
+    - Cannot decode clock stretching or multi-master arbitration
+    - For detailed protocol analysis, a logic analyzer is still preferred
+
+
+================================================================
+OPTION: ESP32-S3 DEV BOARD (ALTERNATIVE ATTACKER PLATFORM)
+================================================================
+
+  Use a second ESP32-S3 dev board (e.g., ESP32-S3-DevKitC-1) as a
+  passive I2C bus sniffer. Flash the esp32_i2c_sniffer.ino sketch
+  via Arduino IDE or PlatformIO. The board monitors SDA/SCL using
+  interrupt-driven edge detection and streams decoded transactions
+  over USB serial.
+
+  This replaces the logic analyzer used in the main wiring above.
+
+       ESP32-S3 Dev Board              CoreS3
+      +------------------+            +-------------------------+
+      |                  |            |                         |
+      |  GPIO12 (input)  +-----<------+ GPIO2 (Port.A SDA)     |
+      |                  |            |                         |
+      |  GPIO11 (input)  +-----<------+ GPIO1 (Port.A SCL)     |
+      |                  |            |                         |
+      |  GND             +------------+ GND (Pin 1 on header)  |
+      |                  |            |                         |
+      +---[USB]----------+            +-------------------------+
+           |
+      To host PC
+
+
+  Connection Table:
+  +------------------+-------+-------------------------------+
+  | ESP32-S3 Board   | Wire  | CoreS3                        |
+  +------------------+-------+-------------------------------+
+  | GPIO12 (input)   | <---  | GPIO2 (SDA) Port.A pin 1      |
+  | GPIO11 (input)   | <---  | GPIO1 (SCL) Port.A pin 0      |
+  | GND              | ----  | Pin 1 (GND) on exp. header    |
+  +------------------+-------+-------------------------------+
+
+  IMPORTANT: The ESP32-S3 pins are configured as inputs with NO
+  internal pull-ups. The CoreS3 already has pull-ups on the I2C bus.
+  This is a passive tap only -- do NOT drive SDA or SCL.
+
+  Both boards are 3.3V -- no level shifter needed.
+
+  Software setup:
+    1. Open esp32_i2c_sniffer.ino in Arduino IDE
+    2. Select board: "ESP32S3 Dev Module"
+    3. Upload to the ESP32-S3 dev board
+    4. Open Serial Monitor at 115200 baud
+    5. Reset the CoreS3 (or type "bus-diag") to trigger EEPROM write
+
+  Output format:
+    [I2C] START
+    [I2C] ADDR: 0x50 W ACK
+    [I2C] DATA: 0x00 ACK       (register 0x00)
+    [I2C] DATA: 0x41 ACK       ('A' - start of ADMINPIN=...)
+    [I2C] STOP
+
+  Advantages over Pico:
+    - Faster interrupt handling (240 MHz vs 133 MHz)
+    - Native 3.3V GPIO (same as target)
+    - Can also be used for WiFi/BLE labs (L20, L20)
+
+==============================================================================

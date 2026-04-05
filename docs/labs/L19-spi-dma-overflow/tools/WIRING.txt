@@ -1,0 +1,161 @@
+======================================================================
+  SPI DMA BUFFER OVERFLOW -- CONNECTION AND BUS DIAGRAM
+======================================================================
+
+  This lab exploits a buffer overflow in the SPI DMA receive handler
+  via the serial "diag 17" command. No physical SPI wiring is needed
+  -- the exploit is delivered over the USB serial console.
+
+----------------------------------------------------------------------
+  SERIAL CONNECTION (EXPLOIT DELIVERY)
+----------------------------------------------------------------------
+
+                USB-C Cable
+  +----------+  ============  +------------------+
+  |          |                |                  |
+  |    PC    |<===== USB ====>|  M5Stack CoreS3  |
+  |          |                |                  |
+  | Terminal |  /dev/ttyACM0  | Serial Console   |
+  | 115200,  |  (Linux)       | accepts "diag"   |
+  | 8N1      |  COM3 (Win)    | commands         |
+  |          |                |                  |
+  +----------+                +------------------+
+
+  The USB-C port provides both power and serial console access.
+  No additional wiring is required for this exploit.
+
+  Connection steps:
+    1. Plug USB-C cable from PC to CoreS3
+    2. Open serial terminal at 115200 baud, 8N1
+       Linux:   screen /dev/ttyACM0 115200
+                pio device monitor -b 115200
+       macOS:   screen /dev/tty.usbmodem* 115200
+       Windows: PuTTY on COM port at 115200
+
+----------------------------------------------------------------------
+  SPI BUS ARCHITECTURE (INTERNAL TO CORES3)
+----------------------------------------------------------------------
+
+  The CoreS3 has multiple devices sharing the SPI bus. The firmware
+  includes a debug SPI logger that writes boot diagnostics to an
+  external SPI flash/EEPROM on the expansion header.
+
+                         ESP32-S3 SoC
+                    +---------------------+
+                    |                     |
+                    |  SPI Controller     |
+                    |  +---------------+  |
+                    |  | FSPI (SPI2)   |  |
+                    |  |               |  |
+                    |  |  DMA Engine   |  |
+                    |  |  [dmaBuffer]  |<------- overflow target
+                    |  |  [dmaCallback]|<------- function pointer
+                    |  +---+-+-+-+-----+  |
+                    |      | | | |        |
+                    +------|-|-|-|--------+
+                           | | | |
+              MOSI  -------+ | | |  GPIO8  (Port.B pin 0)
+              MISO  ---------+ | |  GPIO9  (Port.B pin 1)
+              SCK   -----------+ |  GPIO17 (Port.C pin 1)
+              CS    -------------+  GPIO18 (Port.C pin 0)
+
+  Directly connected SPI peripherals:
+
+  +-------------------+          +-------------------+
+  |  Camera Sensor    |          |  SD Card Slot     |
+  |  (GC0308)         |          |  (microSD)        |
+  |                   |          |                   |
+  |  Uses dedicated   |          |  Uses SDMMC       |
+  |  camera SPI bus   |          |  interface        |
+  +-------------------+          +-------------------+
+
+  +-------------------------------------------+
+  |  Debug SPI Logger (expansion header)      |
+  |                                           |
+  |  CS:   GPIO18 (Port.C pin 0)             |
+  |  SCK:  GPIO17 (Port.C pin 1)             |
+  |  MOSI: GPIO8  (Port.B pin 0)             |
+  |  MISO: GPIO9  (Port.B pin 1)             |
+  |                                           |
+  |  Receives boot diagnostics, firmware      |
+  |  version, and config data via DMA writes. |
+  |  The DMA receive buffer is the overflow   |
+  |  target for this lab.                     |
+  +-------------------------------------------+
+
+----------------------------------------------------------------------
+  DMA BUFFER OVERFLOW MEMORY LAYOUT
+----------------------------------------------------------------------
+
+  The SPI DMA handler uses a struct with a fixed-size receive buffer
+  followed by a callback function pointer:
+
+  Memory offset:
+       0                                              63
+       +================================================+
+       |              dmaBuffer[64]                      |
+       |  (64 bytes -- DMA receive buffer)               |
+       +================================================+
+      64                                              67
+       +================================================+
+       |           dmaCallback (func ptr)                |
+       |  (4 bytes -- called after DMA transfer)         |
+       +================================================+
+
+  Normal operation:
+    - DMA writes <= 64 bytes into dmaBuffer
+    - dmaCallback points to the normal SPI log handler
+
+  Exploit:
+    - Send 68 bytes (64 padding + 4-byte address)
+    - Bytes 0-63 overflow dmaBuffer
+    - Bytes 64-67 overwrite dmaCallback with address of
+      spi_admin_unlock()
+    - Next DMA callback invocation calls spi_admin_unlock()
+
+----------------------------------------------------------------------
+  ATTACK SEQUENCE
+----------------------------------------------------------------------
+
+  1. Connect USB-C cable from PC to CoreS3
+
+  2. Find the target function address:
+     xtensa-esp32s3-elf-nm .pio/build/M5CoreS3/firmware.elf \
+       | grep spi_admin_unlock
+
+  3. Generate the payload (using spi_exploit.py):
+     python3 spi_exploit.py --elf .pio/build/M5CoreS3/firmware.elf
+
+     Or with a known address:
+     python3 spi_exploit.py --address 0x4200D540
+
+  4. Send via serial console:
+     python3 spi_exploit.py --address 0x4200D540 --send-serial
+
+     Or manually paste in the serial console:
+     diag 17 <68-byte hex payload>
+
+  5. Watch for RED screen flash and alarm on the CoreS3
+
+----------------------------------------------------------------------
+  NOTES
+----------------------------------------------------------------------
+
+  - The exploit is delivered via the serial "diag 17" command which
+    simulates an SPI DMA transfer. No physical SPI wiring or
+    external SPI device is needed.
+
+  - The "diag 17" command requires DEV_TEST_HOOKS to be enabled
+    in the firmware build (M5CoreS3_test or M5CoreS3_debug).
+
+  - The 64-byte DMA buffer size and the function pointer at offset
+    64 can be confirmed by examining CameraDevice_Bus.cpp.
+
+  - Success indicators: RED screen flash, alarm sound (alternating
+    880/440 Hz tones + high 1760 Hz confirmation), and SOS LED pattern.
+
+  - The SPI debug logger GPIO assignments are defined in
+    include/config.h (SPI_LOG_CS, SPI_LOG_SCK, SPI_LOG_MOSI,
+    SPI_LOG_MISO).
+
+======================================================================

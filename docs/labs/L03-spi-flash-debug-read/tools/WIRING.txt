@@ -1,0 +1,363 @@
+==============================================================================
+  L03 WIRING DIAGRAM -- SPI Debug Logger Sniffing
+==============================================================================
+
+  Capture SPI traffic from the CoreS3 debug logger interface using a
+  logic analyzer. The SPI signals are exposed on Port.B (Grove black)
+  and Port.C (Grove blue) connectors.
+
+  SPI Pin Mapping:
+    GPIO8  = MOSI (data out from CoreS3)  -- Port.B, pin 1
+    GPIO9  = MISO (data in to CoreS3)     -- Port.B, pin 2
+    GPIO17 = SCK  (clock)                 -- Port.C, pin 2
+    GPIO18 = CS   (chip select, active low) -- Port.C, pin 1
+
+
+==============================================================================
+  CoreS3 Port Layout (viewed from front)
+==============================================================================
+
+       Front of device (screen facing you)
+    _____________________________________________
+   |                                             |
+   |              M5Stack CoreS3                 |
+   |                                             |
+   |   [Port.A]     [Port.B]     [Port.C]       |
+   |    (red)       (black)       (blue)        |
+   |   Grove I2C   Grove IO     Grove IO        |
+   |   G1,G2       G8,G9        G18,G17         |
+   |_____________________________________________|
+   |  Expansion header (15 pins)                 |
+   |  1   2   3   4   5  ...  13  14  15        |
+   | GND  .  GND  .  GND     RX  TX  5V        |
+   |_____________________________________________|
+
+
+==============================================================================
+  SPI Debug Logger Signal Path
+==============================================================================
+
+                     M5Stack CoreS3 (ESP32-S3)
+                    +-------------------------+
+                    |                         |
+                    |  GPIO8  (MOSI) ---+---->|---> Port.B pin 1
+                    |                   |     |
+                    |  GPIO9  (MISO) <--+-----|<--- Port.B pin 2
+                    |                   |     |
+                    |  GPIO17 (SCK)  ---+---->|---> Port.C pin 2
+                    |                   |     |
+                    |  GPIO18 (CS)   ---+---->|---> Port.C pin 1
+                    |                         |
+                    +-------------------------+
+
+  The debug SPI logger outputs boot diagnostics and flash data
+  on these pins. Sniff with a logic analyzer to capture the traffic.
+
+
+==============================================================================
+  WIRING: Logic Analyzer to SPI via Grove Connectors
+==============================================================================
+
+  You need to tap BOTH Port.B and Port.C to get all four SPI signals.
+  Use Grove breakout cables or probe the connector pins directly.
+
+       Port.B (black Grove)              Logic Analyzer
+      +---------------------------+     +----------------+
+      |  Pin 1 = GPIO8  (MOSI)   +---->+ CH0 (MOSI)     |
+      |  Pin 2 = GPIO9  (MISO)   +---->+ CH1 (MISO)     |
+      |  VCC   = 5V  (do not use)|     |                |
+      |  GND                      +-----+ GND            |
+      +---------------------------+     |                |
+                                        |                |
+       Port.C (blue Grove)              |                |
+      +---------------------------+     |                |
+      |  Pin 1 = GPIO18 (CS)     +---->+ CH2 (CS)       |
+      |  Pin 2 = GPIO17 (SCK)    +---->+ CH3 (SCK)      |
+      |  VCC   = 5V  (do not use)|     |                |
+      |  GND                      +-----+ GND            |
+      +---------------------------+     +---[USB]--------+
+                                             |
+                                        To host PC
+
+
+  Connection Table:
+  +------------------+-------+-------------------------------+
+  | Logic Analyzer   | Wire  | CoreS3 Port / GPIO            |
+  +------------------+-------+-------------------------------+
+  | CH0              | <---  | Port.B pin 1 (GPIO8  / MOSI)  |
+  | CH1              | <---  | Port.B pin 2 (GPIO9  / MISO)  |
+  | CH2              | <---  | Port.C pin 1 (GPIO18 / CS)    |
+  | CH3              | <---  | Port.C pin 2 (GPIO17 / SCK)   |
+  | GND              | ----  | Port.B GND or Port.C GND      |
+  +------------------+-------+-------------------------------+
+
+  Notes:
+    - This is a passive tap. The logic analyzer only reads signals.
+    - Connect GND first, then signal wires.
+    - Both Grove connectors share the same ground plane.
+
+
+==============================================================================
+  ALTERNATIVE: Probing via Expansion Header
+==============================================================================
+
+  If you prefer to use the expansion header instead of Grove
+  connectors, GPIO8, GPIO9, GPIO17, and GPIO18 may also be
+  accessible on expansion header pins (consult the CoreS3
+  schematic for exact pin positions).
+
+  The Grove connectors are generally easier to probe since they
+  have clearly labeled, accessible pins.
+
+
+==============================================================================
+  Grove Connector Pinout Reference
+==============================================================================
+
+  Standard M5Stack Grove connector pinout (4 pins):
+
+    +-------+-------+-------+-------+
+    | Pin 1 | Pin 2 |  VCC  |  GND  |
+    | (IO)  | (IO)  | (5V)  |       |
+    +-------+-------+-------+-------+
+
+  Port.B (black):
+    Pin 1 = GPIO8    (SPI MOSI / data out)
+    Pin 2 = GPIO9    (SPI MISO / data in)
+
+  Port.C (blue):
+    Pin 1 = GPIO18   (SPI CS / chip select)
+    Pin 2 = GPIO17   (SPI SCK / clock)
+
+
+==============================================================================
+  PulseView / Saleae Logic -- Channel and Decoder Setup
+==============================================================================
+
+  Channel Assignment:
+  +----------+--------+-------------------------------------------+
+  | Channel  | Signal | GPIO  | Description                       |
+  +----------+--------+-------+-----------------------------------+
+  | CH0      | MOSI   | GPIO8 | Master Out, Slave In (data out)   |
+  | CH1      | MISO   | GPIO9 | Master In, Slave Out (data in)    |
+  | CH2      | CS     | GPIO18| Chip Select (active LOW)          |
+  | CH3      | SCK    | GPIO17| Serial Clock                      |
+  +----------+--------+-------+-----------------------------------+
+
+  PulseView SPI Protocol Decoder Setup:
+  +-------------------+---------------------------+
+  | Setting           | Value                     |
+  +-------------------+---------------------------+
+  | Protocol decoder  | SPI                       |
+  | CLK channel       | CH3                       |
+  | MOSI channel      | CH0                       |
+  | MISO channel      | CH1                       |
+  | CS# channel       | CH2                       |
+  | Clock polarity    | 0 (idle low) *            |
+  | Clock phase       | 0 (sample on leading) *   |
+  | Bit order         | MSB first                 |
+  | Word size         | 8                         |
+  +-------------------+---------------------------+
+  * SPI Mode 0 (CPOL=0, CPHA=0) is most common. If decoding
+    produces garbage, try Mode 1, 2, or 3.
+
+  Saleae Logic 2 Setup:
+  +-------------------+---------------------------+
+  | Setting           | Value                     |
+  +-------------------+---------------------------+
+  | Analyzer          | SPI                       |
+  | MOSI              | Channel 0                 |
+  | MISO              | Channel 1                 |
+  | Clock             | Channel 3                 |
+  | Enable (CS)       | Channel 2                 |
+  | CS active         | Low                       |
+  | CPOL              | 0                         |
+  | CPHA              | 0                         |
+  | Bits per transfer | 8                         |
+  | Bit order         | MSB first                 |
+  +-------------------+---------------------------+
+
+  Recommended sample rate: 10 MHz or higher.
+  SPI clock speeds vary; 10 MHz capture rate provides good
+  coverage for typical debug logger speeds (1-4 MHz).
+
+
+==============================================================================
+  COMPLETE WIRING OVERVIEW (all four signals)
+==============================================================================
+
+       M5Stack CoreS3                    Logic Analyzer
+      +----------------+               +----------------+
+      |                |               |                |
+      | Port.B pin 1   +--- GPIO8  --->+ CH0 (MOSI)    |
+      | (black Grove)  |               |                |
+      | Port.B pin 2   +--- GPIO9  --->+ CH1 (MISO)    |
+      |                |               |                |
+      | Port.C pin 1   +--- GPIO18 --->+ CH2 (CS)      |
+      | (blue Grove)   |               |                |
+      | Port.C pin 2   +--- GPIO17 --->+ CH3 (SCK)     |
+      |                |               |                |
+      | GND            +---------------+ GND            |
+      |                |               |                |
+      +---[USB-C]------+               +---[USB]--------+
+           |                                 |
+      Power / Serial                    To host PC
+
+
+==============================================================================
+  VOLTAGE AND SAFETY NOTES
+==============================================================================
+
+  - All SPI signals operate at 3.3V logic levels (ESP32-S3 GPIO).
+  - Do NOT connect 5V logic analyzers directly to these pins.
+    Use a 3.3V-compatible logic analyzer or a level shifter.
+  - The VCC pin on Grove connectors provides 5V -- do NOT use
+    this as a reference for SPI signal levels.
+  - ESP32-S3 GPIO pins are NOT 5V tolerant.
+  - Always connect GND between devices before signal wires.
+  - CS is active LOW: data is valid when CS is driven LOW.
+  - SCK idles LOW in SPI Mode 0 (most common configuration).
+
+
+================================================================
+OPTION: RASPBERRY PI PICO (BUDGET ALTERNATIVE ~$4)
+================================================================
+
+  Use a Raspberry Pi Pico running MicroPython as a passive SPI
+  bus sniffer. The Pico monitors all four SPI signals (SCK, MOSI,
+  MISO, CS) using fast pin polling, captures complete transactions,
+  and streams the data over USB serial to the host PC for decoding.
+
+  This replaces the logic analyzer used in the main wiring above.
+
+       Raspberry Pi Pico               CoreS3 (Port.B + Port.C)
+      +------------------+            +-------------------------+
+      |                  |            |                         |
+      |  GP10 (input)    +-----<------+ GPIO17 (SCK)  Port.C/2 |
+      |                  |            |                         |
+      |  GP11 (input)    +-----<------+ GPIO8  (MOSI) Port.B/1 |
+      |                  |            |                         |
+      |  GP12 (input)    +-----<------+ GPIO9  (MISO) Port.B/2 |
+      |                  |            |                         |
+      |  GP13 (input)    +-----<------+ GPIO18 (CS)   Port.C/1 |
+      |                  |            |                         |
+      |  GND             +------------+ GND (any Grove GND)    |
+      |                  |            |                         |
+      +---[USB]----------+            +-------------------------+
+           |
+      To host PC
+
+
+  Connection Table:
+  +-------------------+-------+-------------------------------+
+  | Raspberry Pi Pico | Wire  | CoreS3 Port / GPIO            |
+  +-------------------+-------+-------------------------------+
+  | GP10 (input)      | <---  | Port.C pin 2 (GPIO17 / SCK)   |
+  | GP11 (input)      | <---  | Port.B pin 1 (GPIO8  / MOSI)  |
+  | GP12 (input)      | <---  | Port.B pin 2 (GPIO9  / MISO)  |
+  | GP13 (input)      | <---  | Port.C pin 1 (GPIO18 / CS)    |
+  | GND               | ----  | Port.B GND or Port.C GND      |
+  +-------------------+-------+-------------------------------+
+
+  All Pico pins are configured as high-impedance inputs.
+  This is a passive tap -- the Pico does not drive any signals.
+
+  Pico GPIO is 3.3V -- directly compatible with ESP32-S3 SPI levels.
+  No level shifter needed.
+
+  You will need to tap BOTH Grove connectors (Port.B and Port.C) plus
+  GND. Use Grove breakout cables or probe the connector pins directly
+  with jumper wires.
+
+  Software setup:
+    1. Install MicroPython on the Pico (hold BOOTSEL, drag .uf2 file)
+    2. Upload the sniffer firmware:
+       ./pico_spi_sniffer.py --upload --pico-port /dev/ttyACM1
+    3. Capture and decode SPI traffic:
+       ./pico_spi_sniffer.py --receive --pico-port /dev/ttyACM1 --decode
+    4. Or show firmware for manual copy:
+       ./pico_spi_sniffer.py --show-firmware
+
+  Output format from the Pico:
+    CS_LOW                  -- Transaction start (CS asserted)
+    MOSI:0xAB MISO:0xCD    -- One byte on each line (both directions)
+    CS_HIGH                 -- Transaction end (CS deasserted)
+
+  The host --decode flag reconstructs full transactions and extracts
+  ASCII payload from the MOSI data (the debug logger output).
+
+  Limitations vs. a logic analyzer:
+    - May miss high-speed SPI traffic (>1 MHz) due to MicroPython
+      polling rate
+    - No waveform visualization or timing measurements
+    - Cannot distinguish SPI modes (CPOL/CPHA) -- assumes Mode 0
+    - For high-speed or detailed protocol analysis, a logic analyzer
+      is still preferred
+    - SPI debug output occurs at boot -- reset the CoreS3 while
+      capturing to catch the traffic
+
+
+================================================================
+OPTION: ESP32-S3 DEV BOARD (ALTERNATIVE ATTACKER PLATFORM)
+================================================================
+
+  Use a second ESP32-S3 dev board (e.g., ESP32-S3-DevKitC-1) as a
+  passive SPI sniffer. Flash the esp32_spi_sniffer.ino sketch via
+  Arduino IDE or PlatformIO. The board monitors all four SPI signals
+  using interrupt-driven capture and streams decoded data over USB
+  serial.
+
+  This replaces the logic analyzer used in the main wiring above.
+
+       ESP32-S3 Dev Board              CoreS3 (Port.B + Port.C)
+      +------------------+            +-------------------------+
+      |                  |            |                         |
+      |  GPIO4 (input)   +-----<------+ GPIO17 (SCK)  Port.C/2 |
+      |                  |            |                         |
+      |  GPIO5 (input)   +-----<------+ GPIO8  (MOSI) Port.B/1 |
+      |                  |            |                         |
+      |  GPIO6 (input)   +-----<------+ GPIO9  (MISO) Port.B/2 |
+      |                  |            |                         |
+      |  GPIO7 (input)   +-----<------+ GPIO18 (CS)   Port.C/1 |
+      |                  |            |                         |
+      |  GND             +------------+ GND (any Grove GND)    |
+      |                  |            |                         |
+      +---[USB]----------+            +-------------------------+
+           |
+      To host PC
+
+
+  Connection Table:
+  +------------------+-------+-------------------------------+
+  | ESP32-S3 Board   | Wire  | CoreS3 Port / GPIO            |
+  +------------------+-------+-------------------------------+
+  | GPIO4 (input)    | <---  | Port.C pin 2 (GPIO17 / SCK)  |
+  | GPIO5 (input)    | <---  | Port.B pin 1 (GPIO8  / MOSI) |
+  | GPIO6 (input)    | <---  | Port.B pin 2 (GPIO9  / MISO) |
+  | GPIO7 (input)    | <---  | Port.C pin 1 (GPIO18 / CS)   |
+  | GND              | ----  | Port.B GND or Port.C GND     |
+  +------------------+-------+-------------------------------+
+
+  All pins are configured as high-impedance inputs.
+  This is a passive tap -- the ESP32-S3 does not drive any signals.
+
+  Both boards are 3.3V -- no level shifter needed.
+
+  Software setup:
+    1. Open esp32_spi_sniffer.ino in Arduino IDE
+    2. Select board: "ESP32S3 Dev Module"
+    3. Upload to the ESP32-S3 dev board
+    4. Open Serial Monitor at 115200 baud
+    5. Reset the CoreS3 to capture boot-time SPI traffic
+
+  Output format:
+    [SPI] CS LOW  - Transaction start
+    [SPI] MOSI: 0xAB  MISO: 0xCD
+    [SPI] CS HIGH - Transaction end
+
+  Advantages over Pico:
+    - Faster interrupt handling (240 MHz dual-core vs 133 MHz)
+    - Native 3.3V GPIO (same as target)
+    - Can also be used for WiFi/BLE labs (L20, L20)
+
+==============================================================================

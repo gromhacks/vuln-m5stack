@@ -1,0 +1,75 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  unit:
+    name: Host unit/docs checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Run non-device tests (skips device/http)
+        env:
+          SKIP_PIO_TESTS: '1'
+        run: |
+          python3 -u unittests/test_all_labs.py
+
+  device-safe:
+    if: vars.CORES3_DEVICE_CI == '1'
+    name: Device live tests (safe)
+    runs-on: [self-hosted, linux, cores3]
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Run live device tests (safe)
+        env:
+          CORES3_BASE: ${{ vars.CORES3_BASE }}
+          CORES3_IFACE: ${{ vars.CORES3_IFACE }}
+          CORES3_REACH_TRIES: '10'
+          SKIP_PIO_TESTS: '1'
+        run: |
+          echo "Target device: ${CORES3_BASE:-http://192.168.4.1}"
+          python3 -u unittests/test_all_labs.py | tee test_all_labs_safe.txt
+      - name: Upload safe run logs
+        uses: actions/upload-artifact@v4
+        with:
+          name: device-safe-logs
+          path: test_all_labs_safe.txt
+
+  device-destructive:
+    needs: device-safe
+    if: vars.CORES3_DEVICE_CI == '1'
+    name: Device live tests (destructive)
+    runs-on: [self-hosted, linux, cores3]
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Run live device tests (destructive; will reboot during L09)
+        env:
+          CORES3_BASE: ${{ vars.CORES3_BASE }}
+          CORES3_IFACE: ${{ vars.CORES3_IFACE }}
+          CORES3_REACH_TRIES: '10'
+          SKIP_PIO_TESTS: '1'
+          CORES3_DESTRUCTIVE: '1'
+        run: |
+          echo "Target device: ${CORES3_BASE:-http://192.168.4.1}"
+          python3 -u unittests/test_all_labs.py | tee test_all_labs_destructive.txt
+      - name: Upload destructive run logs
+        uses: actions/upload-artifact@v4
+        with:
+          name: device-destructive-logs
+          path: test_all_labs_destructive.txt
+

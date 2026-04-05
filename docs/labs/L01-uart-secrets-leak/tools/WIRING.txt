@@ -1,0 +1,284 @@
+==============================================================================
+  L01 WIRING DIAGRAM -- UART Debug Interface Access
+==============================================================================
+
+  Three methods to access UART output from the M5Stack CoreS3.
+  Method 3 (USB-C) is the simplest. Methods 1-2 target the dedicated
+  debug UART on the expansion header (GPIO43 TX, GPIO44 RX).
+
+==============================================================================
+  CoreS3 Expansion Header Pinout (bottom edge, viewed from front)
+==============================================================================
+
+  The 15-pin expansion header runs along the bottom of the CoreS3.
+  Only relevant pins are labeled; others marked with a dot.
+
+       Front of device (screen facing you)
+    _____________________________________________
+   |                                             |
+   |              M5Stack CoreS3                 |
+   |                                             |
+   |   [Port.A]     [Port.B]     [Port.C]       |
+   |   (red)        (black)      (blue)         |
+   |_____________________________________________|
+   |                                             |
+   | Pin:  1   2   3   4   5  ...  13  14  15   |
+   |      GND  .  GND  .  GND     RX  TX  5V   |
+   |                              G44 G43       |
+   |_____________________________________________|
+
+   Pin 1  = GND
+   Pin 3  = GND
+   Pin 5  = GND
+   Pin 13 = GPIO44 (RXD0) -- Debug UART RX (into CoreS3)
+   Pin 14 = GPIO43 (TXD0) -- Debug UART TX (out of CoreS3)
+   Pin 15 = 5V
+
+
+==============================================================================
+  SCENARIO 1: USB-UART Adapter to Debug UART (Expansion Header)
+==============================================================================
+
+  Use a 3.3V USB-UART adapter (e.g., FTDI FT232R, CP2102, CH340).
+
+  IMPORTANT: Use a 3.3V adapter. Do NOT connect a 5V UART directly
+  to GPIO pins -- the ESP32-S3 is NOT 5V tolerant on GPIO.
+
+         USB-UART Adapter              CoreS3 Expansion Header
+        +----------------+           +-------------------------+
+        |                |           |                         |
+        |  TXD  o--------+------>----+ Pin 13 (GPIO44 / RX)   |
+        |                |           |                         |
+        |  RXD  o--------+------<---+ Pin 14 (GPIO43 / TX)    |
+        |                |           |                         |
+        |  GND  o--------+----------+ Pin 1  (GND)            |
+        |                |           |                         |
+        |  3V3  o  (do not connect)  |                         |
+        |                |           |                         |
+        +---[USB]--------+           +-------------------------+
+             |
+        To host PC
+
+
+  Connection Table:
+  +------------------+-------+------------------------------+
+  | USB-UART Adapter | Wire  | CoreS3 Expansion Header      |
+  +------------------+-------+------------------------------+
+  | TXD              | --->  | Pin 13 (GPIO44 / RXD0)       |
+  | RXD              | <---  | Pin 14 (GPIO43 / TXD0)       |
+  | GND              | ----  | Pin 1  (GND)                 |
+  | VCC / 3V3        |  NC   | Do not connect                |
+  +------------------+-------+------------------------------+
+
+  Terminal settings:
+    - Baud rate : 115200
+    - Data bits : 8
+    - Parity    : None
+    - Stop bits : 1
+    - Flow ctrl : None
+
+  Example (Linux):
+    screen /dev/ttyUSB0 115200
+    minicom -D /dev/ttyUSB0 -b 115200
+
+
+==============================================================================
+  SCENARIO 2: Logic Analyzer -- Passive UART Sniffing
+==============================================================================
+
+  Connect a logic analyzer to passively capture UART TX from the
+  debug port. Only one data line is needed for sniffing output.
+
+         Logic Analyzer                CoreS3 Expansion Header
+        +----------------+           +-------------------------+
+        |                |           |                         |
+        |  CH0  o--------+------<---+ Pin 14 (GPIO43 / TX)    |
+        |                |           |                         |
+        |  CH1  o--------+------<---+ Pin 13 (GPIO44 / RX)    |
+        |  (optional)    |           |   (only if sniffing     |
+        |                |           |    bidirectional)        |
+        |                |           |                         |
+        |  GND  o--------+----------+ Pin 1  (GND)            |
+        |                |           |                         |
+        +---[USB]--------+           +-------------------------+
+             |
+        To host PC
+
+  Connection Table:
+  +------------------+-------+------------------------------+
+  | Logic Analyzer   | Wire  | CoreS3 Expansion Header      |
+  +------------------+-------+------------------------------+
+  | CH0              | <---  | Pin 14 (GPIO43 / TXD0)       |
+  | CH1 (optional)   | <---  | Pin 13 (GPIO44 / RXD0)       |
+  | GND              | ----  | Pin 1  (GND)                 |
+  +------------------+-------+------------------------------+
+
+  PulseView / Saleae Logic Channel Assignment:
+  +----------+--------+---------------------------+
+  | Channel  | Signal | Decoder Settings          |
+  +----------+--------+---------------------------+
+  | CH0      | TX     | UART, 115200, 8N1         |
+  | CH1      | RX     | UART, 115200, 8N1         |
+  +----------+--------+---------------------------+
+
+  PulseView UART decoder settings:
+    - Protocol decoder : UART
+    - RX/TX channel    : Assign to CH0 (or CH1)
+    - Baud rate        : 115200
+    - Data bits        : 8
+    - Parity           : None
+    - Stop bits        : 1
+    - Bit order        : LSB first
+
+  Notes:
+    - Logic levels are 3.3V (ESP32-S3 GPIO).
+    - Sample rate: minimum 1 MHz recommended (8x oversampling).
+    - UART idle state is HIGH. Data begins with a start bit (LOW).
+
+
+==============================================================================
+  SCENARIO 3: Direct USB-C Connection (Simplest)
+==============================================================================
+
+  The CoreS3 exposes a USB CDC serial port over its USB-C connector.
+  No additional hardware is needed.
+
+        +---[USB-C cable]---+
+        |                   |
+   Host PC             M5Stack CoreS3
+   (terminal            (USB-C port)
+    software)
+
+  The device appears as /dev/ttyACM0 (Linux) or COMx (Windows).
+
+  Terminal settings:
+    - Baud rate : 115200
+    - Data bits : 8
+    - Parity    : None
+    - Stop bits : 1
+
+  Example (Linux):
+    screen /dev/ttyACM0 115200
+    minicom -D /dev/ttyACM0 -b 115200
+
+  Note: The USB-C serial output mirrors the debug UART output.
+  Both carry the same boot messages, diagnostic data, and shell.
+
+
+==============================================================================
+  VOLTAGE AND SAFETY NOTES
+==============================================================================
+
+  - ESP32-S3 GPIO pins operate at 3.3V logic levels.
+  - GPIO pins are NOT 5V tolerant. Do not connect 5V signals directly.
+  - The expansion header Pin 15 supplies 5V -- use only for powering
+    external 5V peripherals, not for signal connections to GPIO.
+  - When using a USB-UART adapter, ensure it is set to 3.3V mode.
+  - Always connect GND between devices before connecting signal wires.
+
+
+================================================================
+OPTION: RASPBERRY PI PICO (BUDGET ALTERNATIVE ~$4)
+================================================================
+
+  Use a Raspberry Pi Pico running MicroPython as a UART sniffer.
+  The Pico receives UART data on GP1 and forwards it over USB
+  serial to the host PC, where a Python script parses it for
+  leaked credentials.
+
+  This replaces the USB-UART adapter in Scenario 1.
+
+       Raspberry Pi Pico                CoreS3 Expansion Header
+      +------------------+            +-------------------------+
+      |                  |            |                         |
+      |  GP1 (UART1 RX) +-----<------+ Pin 14 (GPIO43 / TX)   |
+      |                  |            |                         |
+      |  GND             +------------+ Pin 1  (GND)           |
+      |                  |            |                         |
+      +---[USB]----------+            +-------------------------+
+           |
+      To host PC
+
+
+  Connection Table:
+  +-------------------+-------+------------------------------+
+  | Raspberry Pi Pico | Wire  | CoreS3 Expansion Header      |
+  +-------------------+-------+------------------------------+
+  | GP1 (UART1 RX)   | <---  | Pin 14 (GPIO43 / TXD0)       |
+  | GND               | ----  | Pin 1  (GND)                 |
+  +-------------------+-------+------------------------------+
+
+  Only two wires are needed. The Pico receives 3.3V UART data
+  from the CoreS3 debug TX line and streams it over USB to
+  the host.
+
+  Pico GPIO is 3.3V -- directly compatible with ESP32-S3 levels.
+  No level shifter needed.
+
+  Software setup:
+    1. Install MicroPython on the Pico (hold BOOTSEL, drag .uf2 file)
+    2. Upload the sniffer firmware:
+       ./pico_uart_sniffer.py --upload --pico-port /dev/ttyACM1
+    3. Capture and analyze:
+       ./pico_uart_sniffer.py --receive --pico-port /dev/ttyACM1 --duration 30
+    4. Or show firmware for manual copy:
+       ./pico_uart_sniffer.py --show-firmware
+
+  Notes:
+    - The Pico appears as /dev/ttyACMx on Linux when running MicroPython.
+    - If the CoreS3 is also connected via USB, there may be multiple
+      /dev/ttyACM devices. Use the higher-numbered one for the Pico.
+    - Reset the CoreS3 during capture to catch boot-time secret leaks.
+
+
+================================================================
+OPTION: ESP32-S3 DEV BOARD (ALTERNATIVE ATTACKER PLATFORM)
+================================================================
+
+  Use a second ESP32-S3 dev board (e.g., ESP32-S3-DevKitC-1) as a
+  UART sniffer. Flash the esp32_uart_sniffer.ino sketch via Arduino
+  IDE or PlatformIO. The board receives UART data on GPIO18 (Serial1
+  RX) and forwards decoded output over USB serial to the host PC.
+
+  This replaces the USB-UART adapter in Scenario 1.
+
+       ESP32-S3 Dev Board              CoreS3 Expansion Header
+      +------------------+            +-------------------------+
+      |                  |            |                         |
+      |  GPIO18 (RX)     +-----<------+ Pin 14 (GPIO43 / TX)   |
+      |                  |            |                         |
+      |  GND             +------------+ Pin 1  (GND)           |
+      |                  |            |                         |
+      +---[USB]----------+            +-------------------------+
+           |
+      To host PC
+
+
+  Connection Table:
+  +-------------------+-------+------------------------------+
+  | ESP32-S3 Board    | Wire  | CoreS3 Expansion Header      |
+  +-------------------+-------+------------------------------+
+  | GPIO18 (RX in)    | <---  | Pin 14 (GPIO43 / TXD0)       |
+  | GND               | ----  | Pin 1  (GND)                 |
+  +-------------------+-------+------------------------------+
+
+  Only two wires are needed. Both boards are 3.3V -- no level
+  shifter required.
+
+  Software setup:
+    1. Open esp32_uart_sniffer.ino in Arduino IDE
+    2. Select board: "ESP32S3 Dev Module"
+    3. Upload to the ESP32-S3 dev board
+    4. Open Serial Monitor at 115200 baud
+    5. Reset the CoreS3 to capture boot-time credential leaks
+
+  The sketch prints captured lines prefixed with [SNIFF] and
+  highlights lines containing keywords like "password", "pin",
+  "key", "secret", "jwt", and "token".
+
+  Advantages over Pico:
+    - Native 3.3V UART hardware (no bit-banging)
+    - Same architecture as the target (useful for understanding ESP32)
+    - Can also be used for WiFi/BLE labs (L08, L08)
+
+==============================================================================

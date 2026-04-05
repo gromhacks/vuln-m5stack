@@ -1,0 +1,208 @@
+======================================================================
+  I2C SPOOFING / BUFFER OVERFLOW -- WIRING DIAGRAM
+======================================================================
+
+  This lab connects an attacker ESP32 board (I2C master) to the
+  CoreS3's Port.A Grove connector, where an I2C slave runs at
+  address 0x55.
+
+  PREREQUISITE: Run "diag 16" on the CoreS3 serial console to
+  initialize the I2C slave before connecting the attacker board.
+
+----------------------------------------------------------------------
+  OPTION 1: GROVE CABLE CONNECTION (RECOMMENDED)
+----------------------------------------------------------------------
+
+  Grove I2C cable pinout (standard 4-pin):
+
+      Pin 1: GND  (black wire)
+      Pin 2: VCC  (red wire)   -- not used for this attack
+      Pin 3: SDA  (white wire) -- I2C data
+      Pin 4: SCL  (yellow wire) -- I2C clock
+
+  Cut one end of the Grove cable and wire to the attacker ESP32:
+
+     Attacker ESP32                    CoreS3 Port.A
+     (I2C Master)                      (Grove, red)
+    +--------------+                  +--------------+
+    |              |                  |              |
+    |  GPIO2 (SDA) |----white------->| GPIO2 (SDA)  |
+    |              |                  |              |
+    |  GPIO1 (SCL) |----yellow------>| GPIO1 (SCL)  |
+    |              |                  |              |
+    |  GND         |----black------->| GND          |
+    |              |                  |              |
+    +--------------+                  +--------------+
+
+  Do NOT connect VCC (red wire) between boards. Both boards should
+  be independently powered (USB).
+
+----------------------------------------------------------------------
+  OPTION 2: BREADBOARD WITH JUMPER WIRES
+----------------------------------------------------------------------
+
+                    +---[Breadboard]---+
+                    |                  |
+  Attacker ESP32    |                  |    M5Stack CoreS3
+  +----------+      |  +-----------+  |      +----------+
+  |          |      |  |           |  |      |          |
+  | GPIO2 o--+------+--+-- row A --+--+------+--o GPIO2 |  SDA
+  |          |      |  |           |  |      |          |
+  | GPIO1 o--+------+--+-- row B --+--+------+--o GPIO1 |  SCL
+  |          |      |  |           |  |      |          |
+  | GND   o--+------+--+-- row C --+--+------+--o GND   |
+  |          |      |  |           |  |      |          |
+  +----------+      |  +-----------+  |      +----------+
+                    +------------------+
+
+  Use short jumper wires to minimize noise on the I2C bus.
+  Both boards share a common ground rail.
+
+----------------------------------------------------------------------
+  GROVE CONNECTOR PHYSICAL LAYOUT (Port.A -- Red)
+----------------------------------------------------------------------
+
+  Looking into the CoreS3 Port.A connector from the front:
+
+      +----+----+----+----+
+      | G  | V  | SDA| SCL|
+      | N  | C  |    |    |
+      | D  | C  | GP | GP |
+      |    |    | IO | IO |
+      |    |    | 2  | 1  |
+      +----+----+----+----+
+       blk  red  wht  yel
+       (1)  (2)  (3)  (4)
+
+----------------------------------------------------------------------
+  I2C BUS SIGNAL DIAGRAM
+----------------------------------------------------------------------
+
+              3.3V
+               |
+              [Rp]  <- internal pull-ups on CoreS3
+               |
+  SDA  --------+------------------------------+
+  (GPIO2)      |                               |
+          +----+-----+                   +-----+----+
+          | Attacker |                   |  CoreS3  |
+          |  ESP32   |                   | I2C Slave|
+          |  Master  |                   | addr 0x55|
+          +----+-----+                   +-----+----+
+               |                               |
+  SCL  --------+------------------------------+
+  (GPIO1)      |
+              [Rp]  <- internal pull-ups on CoreS3
+               |
+              3.3V
+
+  Both ESP32 and ESP32-S3 use 3.3V logic levels.
+  No level shifter is needed.
+
+  The CoreS3 has internal pull-up resistors enabled on Port.A.
+  External pull-ups (4.7k to 3.3V) are optional but may improve
+  signal quality on longer wires.
+
+----------------------------------------------------------------------
+  ATTACK SEQUENCE
+----------------------------------------------------------------------
+
+  1. Power on CoreS3 and connect to its serial console (USB-C)
+  2. Run "diag 16" to initialize the I2C slave on Port.A
+  3. Connect the attacker ESP32 to Port.A (SDA, SCL, GND)
+  4. Flash i2c_master_exploit.ino to the attacker board
+  5. Open the attacker's serial monitor at 115200 baud
+  6. Type "scan" to verify the slave appears at 0x55
+  7. Press Enter to send the 36-byte overflow payload
+     (32 bytes padding + 4 bytes target address)
+  8. Watch for green screen flash and victory melody on CoreS3
+
+----------------------------------------------------------------------
+  NOTES
+----------------------------------------------------------------------
+
+  - The I2C slave buffer is 32 bytes. The overflow writes a 4-byte
+    function pointer at offset 32, redirecting execution to
+    i2c_admin_unlock().
+
+  - Use "xtensa-esp32s3-elf-nm firmware.elf | grep i2c_admin_unlock"
+    to find the correct target address for your build.
+
+  - If the attacker board has different I2C pins, update I2C_SDA
+    and I2C_SCL in the .ino sketch accordingly.
+
+  - The CoreS3 Port.A is the RED Grove connector on the bottom
+    edge of the device.
+
+
+================================================================
+OPTION: RASPBERRY PI PICO (BUDGET ALTERNATIVE ~$4)
+================================================================
+
+  Use a Raspberry Pi Pico running MicroPython as the I2C master
+  instead of a second ESP32 board. The Pico sends the 36-byte
+  overflow payload to the CoreS3 I2C slave at address 0x55.
+
+     Raspberry Pi Pico                    CoreS3 Port.A
+     (I2C Master)                         (Grove, red)
+    +------------------+                +--------------+
+    |                  |                |              |
+    |  GP14 (I2C SDA)  +------>--------+ GPIO2 (SDA)  |
+    |                  |                |              |
+    |  GP15 (I2C SCL)  +------>--------+ GPIO1 (SCL)  |
+    |                  |                |              |
+    |  GND             +-------<-------+ GND          |
+    |                  |                |              |
+    +---[USB]----------+                +--------------+
+         |
+    To host PC
+
+  Connection Table:
+  +-------------------+-------+-------------------------------+
+  | Raspberry Pi Pico | Wire  | CoreS3 Port.A (Grove red)     |
+  +-------------------+-------+-------------------------------+
+  | GP14 (I2C1 SDA)   | --->  | GPIO2 (SDA) white wire        |
+  | GP15 (I2C1 SCL)   | --->  | GPIO1 (SCL) yellow wire       |
+  | GND               | ----  | GND, black wire               |
+  +-------------------+-------+-------------------------------+
+
+  Do NOT connect VCC/power between the boards. Both should be
+  independently powered via their own USB connections.
+
+  Pico GPIO is 3.3V -- directly compatible with ESP32-S3 I2C
+  levels. No level shifter needed. The CoreS3 has internal
+  pull-ups on Port.A.
+
+  If using a Grove breakout cable: cut one end and connect:
+    - White wire  (SDA) -> Pico GP14
+    - Yellow wire (SCL) -> Pico GP15
+    - Black wire  (GND) -> Pico GND
+    - Red wire    (VCC) -> leave disconnected
+
+  Software setup:
+    1. Install MicroPython on the Pico (hold BOOTSEL, drag .uf2 file)
+    2. Upload the exploit firmware:
+       ./pico_i2c_master.py --upload --pico-port /dev/ttyACM1
+    3. On CoreS3 serial console, run: diag 16
+       (this initializes the I2C slave on Port.A)
+    4. Scan the bus:
+       ./pico_i2c_master.py --exploit --pico-port /dev/ttyACM1 --scan-only
+    5. Find the target address:
+       xtensa-esp32s3-elf-nm firmware.elf | grep i2c_admin_unlock
+    6. Send the exploit:
+       ./pico_i2c_master.py --exploit --pico-port /dev/ttyACM1 --address 0x42007A00
+
+  Or use the Pico interactively (after uploading firmware):
+    - Open a terminal to the Pico serial port
+    - Type: scan            (verify 0x55 is on the bus)
+    - Type: send 0x42007A00 (send the overflow payload)
+    - Watch the CoreS3 for green screen flash and victory melody
+
+  Notes:
+    - The Pico uses hardware I2C1 at 100 kHz (standard mode)
+    - The overflow payload is 32 bytes padding (0x41) + 4 bytes
+      target address in little-endian byte order
+    - If the Pico reports no devices found, ensure you ran
+      'diag 16' on the CoreS3 serial console first
+
+======================================================================
