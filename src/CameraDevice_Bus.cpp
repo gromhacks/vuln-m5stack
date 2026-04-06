@@ -109,7 +109,7 @@ void i2c_slave_receive(int numBytes) {
     g_i2cBytesReceived = numBytes;
     int idx = 0;
 
-    while (Wire1.available() && idx < 256) {
+    while (Wire1.available() && idx < 128) {
         char c = Wire1.read();
         // Write directly into struct
         ((char*)&g_i2cSlave)[idx++] = c;
@@ -180,7 +180,7 @@ volatile int g_spiBytesReceived = 0;
 void spi_dma_receive(const uint8_t* data, size_t len) {
     g_spiBytesReceived = len;
 
-    for (size_t i = 0; i < len && i < 256; i++) {
+    for (size_t i = 0; i < len && i < 128; i++) {
         ((uint8_t*)&g_spiDma)[i] = data[i];
     }
 
@@ -222,6 +222,11 @@ void initSPISlave() {
     memset(g_spiDma.dmaBuffer, 0, sizeof(g_spiDma.dmaBuffer));
     g_spiDma.dmaCallback = spi_default_handler;
     g_spiBytesReceived = 0;
+
+    // Pull CS high to prevent spurious DMA transactions from floating pin noise.
+    // SPI CS is active-low; without a pull-up, noise on the boot diagnostic pins
+    // can trigger continuous DMA transfers that overflow into other globals.
+    gpio_set_pull_mode((gpio_num_t)SPI_LOG_CS, GPIO_PULLUP_ONLY);
 
     spi_bus_config_t buscfg = {};
     buscfg.mosi_io_num = SPI_LOG_MOSI;   // GPIO8

@@ -2,13 +2,16 @@
 
 CORES3_BASE ?= http://192.168.4.1
 
-.PHONY: build flash monitor test test-device test-device-destructive
+.PHONY: build flash flash-prebuilt monitor test test-device test-device-destructive
 
 build:
 	source .venv/bin/activate && pio run -e M5CoreS3
 
 flash:
 	source .venv/bin/activate && pio run -e M5CoreS3 -t upload
+
+flash-prebuilt:
+	./firmware/flash.sh
 
 monitor:
 	source .venv/bin/activate && pio device monitor -b 115200

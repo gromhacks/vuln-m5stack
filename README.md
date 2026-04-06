@@ -4,6 +4,8 @@
 
 # CoreS3 Camera Training Platform
 
+> **IMPORTANT (2026-04-06): Boot crash fix -- please re-pull.** A bug caused the device to crash on boot with a `Guru Meditation Error: Core 1 panic'ed (LoadProhibited)` due to floating SPI/I2C GPIO pins triggering spurious DMA transactions that corrupted system memory. This has been fixed. If you are experiencing boot crashes or UART issues, pull the latest code and re-flash your device.
+
 IoT Security Education Device for M5Stack CoreS3 (ESP32-S3)
 
 > **Disclaimer:** This firmware is *intentionally* vulnerable. That is the whole point. If you plug it into your production network, put it on the open internet, or leave it running at your in-laws' house - whatever happens next is entirely on you. We are not responsible for your device getting owned, your network getting popped, your credentials getting leaked, your dog learning to deauth your router, or any other creative misuse of a device that was literally designed to be hacked. Use it on an isolated lab network, treat it like the live grenade it is, and have fun breaking things responsibly. Happy hacking.
@@ -92,14 +94,34 @@ Full datasheets for every chip on the CoreS3 and the board schematic are in `dat
 
 ## Quick Start
 
+### Option A: Flash Pre-built Firmware (fastest)
+
+Pre-built binaries are in the `firmware/` directory. No toolchain or build required.
+
+```bash
+# Install esptool (if not already installed)
+pip install esptool
+
+# Flash the device (auto-detects port)
+./firmware/flash.sh
+
+# Or specify port manually
+./firmware/flash.sh /dev/ttyACM0
+```
+
+### Option B: Build from Source
+
 ```bash
 # Install PlatformIO (if not already installed)
 pip install platformio
 
 # Build and flash firmware
 pio run -e M5CoreS3 -t upload
+```
 
-# Monitor serial output
+### Monitor Serial Output
+
+```bash
 pio device monitor -b 115200
 ```
 

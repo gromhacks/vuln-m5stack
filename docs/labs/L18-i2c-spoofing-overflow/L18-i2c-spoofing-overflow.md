@@ -29,7 +29,7 @@ The receive handler copies bytes directly into the struct with no bounds checkin
 ```cpp
 static void i2c_slave_receive(int numBytes) {
     int idx = 0;
-    while (Wire.available() && idx < 256) {
+    while (Wire.available() && idx < 128) {
         char c = Wire.read();
         ((char*)&g_i2cSlave)[idx++] = c;  // Write directly into struct
     }

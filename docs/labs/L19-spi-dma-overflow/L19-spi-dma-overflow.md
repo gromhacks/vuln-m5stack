@@ -229,8 +229,8 @@ Exploitation chain:
    -> Real SPI transfer to slave on GPIO8/17/18
 
 4. OVERFLOW: spi_dma_receive() copies 68 bytes into 64-byte buffer
-   -> No bounds check: for (i = 0; i < len && i < 256; i++)
-   -> 256-byte cap exists but 68 < 256, so overflow proceeds
+   -> No bounds check: for (i = 0; i < len && i < 128; i++)
+   -> 128-byte cap exists but 68 < 128, so overflow proceeds
 
 5. HIJACK: Handler calls g_spiDma.dmaCallback()
    -> Pointer was overwritten to point to spi_admin_unlock()

@@ -12,7 +12,12 @@ You have an M5Stack CoreS3 running custom IoT camera firmware. There are **32 vu
 ## Setup
 
 ```bash
-# Build and flash
+# Flash pre-built firmware (fastest)
+pip install esptool
+./firmware/flash.sh
+
+# Or build from source
+pip install platformio
 pio run -e M5CoreS3 -t upload
 
 # Serial console
@@ -23,7 +28,7 @@ pio device monitor -b 115200
 
 You now have a serial console and a web interface. Go.
 
-**Source code and firmware:** The full source is in `src/` and `lib/` - read it, grep it, or ignore it and treat the device as a black box. The compiled binary is at `.pio/build/M5CoreS3/firmware.bin` (raw) and `.pio/build/M5CoreS3/firmware.elf` (ELF with symbols). You can also dump firmware from the device with `esptool.py read_flash`. Load the ELF into Ghidra (Xtensa processor module) or use `xtensa-esp32s3-elf-nm` / `objdump` for symbol lookup. The `docs/labs/L04-firmware-extraction/tools/bin2elf.py` script converts raw dumps to ELF format.
+**Source code and firmware:** The full source is in `src/` and `lib/` - read it, grep it, or ignore it and treat the device as a black box. Pre-built binaries are in `firmware/`. The compiled binary is also at `.pio/build/M5CoreS3/firmware.bin` (raw) and `.pio/build/M5CoreS3/firmware.elf` (ELF with symbols) after a build. You can also dump firmware from the device with `esptool.py read_flash`. Load the ELF into Ghidra (Xtensa processor module) or use `xtensa-esp32s3-elf-nm` / `objdump` for symbol lookup. The `docs/labs/L04-firmware-extraction/tools/bin2elf.py` script converts raw dumps to ELF format.
 
 ## Attack Surface Map
 

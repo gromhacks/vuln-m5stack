@@ -44,7 +44,11 @@ These are only in the `M5CoreS3_test` and `M5CoreS3_debug` builds, never in the 
 # Identify serial device
 ls -l /dev/serial/by-id/
 
-# Standard firmware (for students)
+# Flash pre-built firmware (no toolchain needed, just esptool)
+./firmware/flash.sh
+./firmware/flash.sh /dev/ttyACM0  # or specify port
+
+# Standard firmware from source (for students)
 pio run -e M5CoreS3 -t upload
 
 # Debug firmware (for instructors/CI - includes /diag endpoint)

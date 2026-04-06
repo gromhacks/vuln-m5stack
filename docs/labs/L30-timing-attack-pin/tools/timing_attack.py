@@ -168,7 +168,7 @@ def main():
     parser = argparse.ArgumentParser(
         description="Timing attack on PIN verification - extract the device "
                     "PIN digit-by-digit by measuring /api/check_pin response "
-                    "times. Each correct digit adds ~10us server-side delay.",
+                    "times. Each correct digit adds ~50ms server-side delay.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:

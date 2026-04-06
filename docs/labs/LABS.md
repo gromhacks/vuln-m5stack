@@ -34,11 +34,16 @@ This platform provides **32 security labs** covering the full spectrum of IoT pe
 git clone <repo-url>
 cd vuln-m5stack
 
-# Build and flash firmware
+# Option A: Flash pre-built firmware (fastest, no toolchain needed)
+pip install esptool
+./firmware/flash.sh
+
+# Option B: Build from source and flash
+pip install platformio
 pio run -e M5CoreS3 -t upload
 
 # Monitor serial output
-pio device monitor -e M5CoreS3
+pio device monitor -b 115200
 ```
 
 ### Troubleshooting

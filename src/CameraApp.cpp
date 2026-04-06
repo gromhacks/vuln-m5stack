@@ -1002,35 +1002,17 @@ void CameraApp::updateLED() {
         // Set LED based on state
         switch (currentState) {
             case STATE_SETUP_MODE:
-                // Steady ON for setup mode
+            case STATE_CAMERA_VIEW:
+            case STATE_SETTINGS:
+                // Steady ON
                 M5.In_I2C.writeRegister8(0x34, 0x69, 0b00110101, 100000L);
-                DualSerial.println("[LED] Setup mode - ON");
                 break;
             case STATE_PIN_ENTRY:
             case STATE_ADMIN_PIN_ENTRY:
-                // Will blink fast
-                M5.In_I2C.writeRegister8(0x34, 0x69, 0b00110101, 100000L);
-                DualSerial.println("[LED] PIN entry - Fast blink");
-                break;
-            case STATE_CAMERA_VIEW:
-                // Steady ON for camera view
-                M5.In_I2C.writeRegister8(0x34, 0x69, 0b00110101, 100000L);
-                DualSerial.println("[LED] Camera view - ON");
-                break;
             case STATE_ADMIN_MODE:
-                // Will blink medium
-                M5.In_I2C.writeRegister8(0x34, 0x69, 0b00110101, 100000L);
-                DualSerial.println("[LED] Admin mode - Medium blink");
-                break;
-            case STATE_SETTINGS:
-                // Steady ON for settings
-                M5.In_I2C.writeRegister8(0x34, 0x69, 0b00110101, 100000L);
-                DualSerial.println("[LED] Settings - ON");
-                break;
             case STATE_SELF_TEST:
-                // Will blink medium
+                // Blink (fast for PIN entry, medium for admin/self-test)
                 M5.In_I2C.writeRegister8(0x34, 0x69, 0b00110101, 100000L);
-                DualSerial.println("[LED] Self-test - Medium blink");
                 break;
         }
     }

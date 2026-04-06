@@ -305,6 +305,14 @@ bool CameraDevice::init() {
             // accumulates into the vulnerable struct, then calls the callback when
             // no more data arrives (10ms idle timeout = end of transaction).
             xTaskCreatePinnedToCore([](void*) {
+                // Drain any spurious bytes that accumulated in the RX buffer
+                // during GPIO reconfiguration from boot diagnostics bit-bang
+                // to I2C slave mode. Without this, bus noise from the pin
+                // transition triggers the overflow handler on every boot.
+                {
+                    uint8_t drain;
+                    while (i2c_slave_read_buffer(I2C_NUM_0, &drain, 1, pdMS_TO_TICKS(50)) > 0) {}
+                }
                 memset(g_i2cSlave.buffer, 0, sizeof(g_i2cSlave.buffer));
                 g_i2cSlave.authCallback = i2c_default_handler;
                 int writeIdx = 0;
@@ -312,7 +320,7 @@ bool CameraDevice::init() {
                     uint8_t byte;
                     int got = i2c_slave_read_buffer(I2C_NUM_0, &byte, 1, pdMS_TO_TICKS(10));
                     if (got > 0) {
-                        if (writeIdx < 256) {
+                        if (writeIdx < 128) {
                             ((char*)&g_i2cSlave)[writeIdx++] = byte;
                         }
                     } else if (writeIdx > 0) {

@@ -150,7 +150,7 @@ cores3-cam> usb-cmd dump-nvs
 ```
 
 Key observations:
-- Password `usbadmin` (discoverable via firmware analysis or L26 memory leak)
+- Password `usbadmin` (discoverable via firmware strings or binary analysis)
 - 2-second session managed by a background FreeRTOS task
 - `usb-cmd` spawns a separate worker task with 250ms delay
 - Three concurrent tasks share one unsynchronized `volatile bool`
@@ -355,7 +355,7 @@ EOF
 - **250ms race window**: Commands at 1750-2000ms after auth pass the check but execute after expiry.
 - **Multiple commands per auth**: Rapid `usb-cmd` invocations each spawn independent workers, all passing auth before any execute.
 - **No atomic invalidation**: The `volatile bool` provides no mutual exclusion between check-then-act and timeout clear.
-- **Weak password**: `usbadmin` is hardcoded (discoverable via strings, firmware dump, or L26 memory leak).
+- **Weak password**: `usbadmin` is hardcoded (discoverable via strings or firmware dump).
 - **Real-world parallel**: TOCTOU in authentication found in smart lock BLE (CVE-2019-13143), automotive key fob relays, and SCADA serial protocols with fixed session windows.
 
 ## References
